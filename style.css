@@ -1,3 +1,8 @@
+/* ==========================
+map-visualizer/style.css
+(기존 코드 + 범례 확장)
+========================== */
+
 /* 전체 배경과 기본 폰트 설정 */
 body {
   margin: 0;
@@ -158,3 +163,31 @@ button:disabled {
 .legend-color.boss { background: #ec4899; }
 .legend-color.hub { background: #a855f7; }
 .legend-color.other { background: #9ca3af; }
+
+/* 디테일 레이어 범례 */
+.legend-extra {
+  margin-top: 8px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legend-dot.door   { background: #facc15; }
+.legend-dot.window { background: #7dd3fc; }
+.legend-dot.prop   { background: #f9a8d4; }
+.legend-dot.enemy  { background: #fb7185; }
+
+.legend-line {
+  width: 28px;
+  height: 0;
+  border-bottom: 3px solid #e5e7eb;
+  display: inline-block;
+}
+
+.legend-line.mainpath {
+  border-color: #e5e7eb;
+}

@@ -1,3 +1,6 @@
+<!-- ==========================
+map-visualizer/index.html
+========================== -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +13,8 @@
     <header class="header">
       <h1>Level Map Visualizer</h1>
       <p class="subtitle">
-        Paste a full Level Blueprint (with <code>level-json</code>) and generate a 2D map.
+        Paste a full Level Blueprint (with <code>level-json</code>) and generate a 2D map
+        including doors, windows, props, and enemy spawns.
       </p>
     </header>
 
@@ -34,8 +38,9 @@
     <section class="panel">
       <h2>2) Generated Map Preview</h2>
       <p class="hint">
-        The map is drawn from the <code>rooms</code> and <code>connections</code> inside the
-        <code>level-json</code> block. Room size and position are based on grid coordinates.
+        The map is drawn from the <code>rooms</code>, <code>connections</code>, and optional
+        detail layers (<code>doors</code>, <code>windows</code>, <code>props</code>,
+        <code>enemySpawns</code>) inside the <code>level-json</code> block.
       </p>
       <div id="mapContainer" class="map-container">
         <!-- SVG가 여기 안에 동적으로 삽입됩니다 -->
@@ -50,6 +55,28 @@
           <li><span class="legend-color boss"></span> Boss / Climax</li>
           <li><span class="legend-color hub"></span> Hub / Safe</li>
           <li><span class="legend-color other"></span> Other types</li>
+        </ul>
+        <ul class="legend-extra">
+          <li>
+            <span class="legend-dot door"></span>
+            Door &mdash; thick yellow tick on the room edge
+          </li>
+          <li>
+            <span class="legend-dot window"></span>
+            Window &mdash; cyan dashed mark on the room edge
+          </li>
+          <li>
+            <span class="legend-dot prop"></span>
+            Prop / Object &mdash; pink square inside the room
+          </li>
+          <li>
+            <span class="legend-dot enemy"></span>
+            Enemy Spawn &mdash; red circle with a crosshair
+          </li>
+          <li>
+            <span class="legend-line mainpath"></span>
+            Main Path Connection &mdash; highlighted main route between rooms
+          </li>
         </ul>
       </div>
     </section>
