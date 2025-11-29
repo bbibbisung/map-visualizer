@@ -405,14 +405,14 @@ function drawLevelMap(layout, options = {}) {
 
     roomsGroup.appendChild(rect);
 
-    // 방 레이블 텍스트
+    // ✅ 방 레이블 텍스트: 중앙이 아니라 "상단 안쪽"에 배치
     const label = room.label || room.id || "";
     if (label) {
       const text = createSvgElement("text", {
-        x: rx + rw / 2,
-        y: ry + rh / 2,
+        x: rx + rw / 2,        // 가로는 가운데
+        y: ry + 14,            // 세로는 방의 위쪽에서 약간 아래
         "text-anchor": "middle",
-        "dominant-baseline": "middle",
+        "dominant-baseline": "hanging",  // 위쪽 기준으로 내려옴
         "font-size": 12,
         "fill": "#e5e7eb"
       });
