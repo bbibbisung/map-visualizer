@@ -38,14 +38,17 @@ map-visualizer/index.html
     <section class="panel">
       <h2>2) Generated Map Preview</h2>
       <p class="hint">
-        The map is drawn from the <code>rooms</code>, <code>connections</code>, and optional
-        detail layers (<code>doors</code>, <code>windows</code>, <code>props</code>,
+        The map is drawn from the <code>rooms</code> and detail layers
+        (<code>doors</code>, <code>windows</code>, <code>props</code>,
         <code>enemySpawns</code>) inside the <code>level-json</code> block.
+        Connections are still part of the JSON for gameplay logic, but are not
+        rendered as lines in this viewer.
       </p>
 
       <!-- 레이어 토글 -->
       <div class="layer-toggles">
         <span class="label">Layers:</span>
+        <label><input type="checkbox" id="toggleGrid" checked> Grid</label>
         <label><input type="checkbox" id="toggleDoors" checked> Doors</label>
         <label><input type="checkbox" id="toggleWindows" checked> Windows</label>
         <label><input type="checkbox" id="toggleProps" checked> Props</label>
@@ -82,10 +85,6 @@ map-visualizer/index.html
           <li>
             <span class="legend-dot enemy"></span>
             Enemy Spawn &mdash; red circle with a crosshair
-          </li>
-          <li>
-            <span class="legend-line mainpath"></span>
-            Main Path Connection &mdash; highlighted main route between rooms
           </li>
         </ul>
       </div>
