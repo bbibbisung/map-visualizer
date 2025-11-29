@@ -10,7 +10,6 @@ const statusEl = document.getElementById("status");
 const mapContainer = document.getElementById("mapContainer");
 
 // 레이어 토글 요소
-const toggleGridEl = document.getElementById("toggleGrid");
 const toggleDoorsEl = document.getElementById("toggleDoors");
 const toggleWindowsEl = document.getElementById("toggleWindows");
 const togglePropsEl = document.getElementById("toggleProps");
@@ -40,7 +39,8 @@ const FEATURE_COLORS = {
   door: "#facc15",       // 노란색
   window: "#7dd3fc",     // 밝은 파랑
   prop: "#f9a8d4",       // 핑크
-  enemy: "#fb7185"       // 적 위치
+  enemy: "#fb7185",      // 적 위치
+  mainPath: "#e5e7eb"    // (현재는 사용 안 함, 추후 메인 루트 하이라이트용)
 };
 
 // 프롭 카테고리별 크기(룸 로컬 그리드 단위 기준)
@@ -93,7 +93,6 @@ function createSvgElement(tag, attrs = {}) {
 // 현재 레이어 토글 상태 읽기
 function getCurrentOptions() {
   return {
-    showGrid: !toggleGridEl || toggleGridEl.checked,
     showDoors: !toggleDoorsEl || toggleDoorsEl.checked,
     showWindows: !toggleWindowsEl || toggleWindowsEl.checked,
     showProps: !togglePropsEl || togglePropsEl.checked,
@@ -102,23 +101,30 @@ function getCurrentOptions() {
 }
 
 // ===== 맵 그리기 핵심 함수 =====
-function drawLevelMap(layout) {
-  const rooms = layout.rooms || [];
+function drawLevelMap(layout, options = {}) {
+  const {
+    showDoors = true,
+    showWindows = true,
+    showProps = true,
+    showEnemies = true
+  } = options;
 
+  const rooms = layout.rooms || [];
   const doors = layout.doors || [];
   const windows = layout.windows || [];
   const props = layout.props || [];
   const enemySpawns = layout.enemySpawns || [];
 
+  // --- 디버그 로그: 실제로 무엇이 들어왔는지 ---
   console.log("[Visualizer] layout:", layout);
   console.log(
     `[Visualizer] counts -> rooms: ${rooms.length}, doors: ${doors.length}, windows: ${windows.length}, props: ${props.length}, enemySpawns: ${enemySpawns.length}`
   );
-
   if (!rooms.length) {
     throw new Error("No rooms found in level-json.");
   }
 
+  // 디버깅용 경고
   if (!doors.length) console.warn("[Visualizer] doors array is empty.");
   if (!windows.length) console.warn("[Visualizer] windows array is empty.");
   if (!props.length) console.warn("[Visualizer] props array is empty.");
@@ -168,23 +174,8 @@ function drawLevelMap(layout) {
   });
   svg.appendChild(bg);
 
-  // 방 기하 정보를 빠르게 찾기 위한 맵
-  const roomGeomMap = new Map();
-  rooms.forEach((room) => {
-    const rx = (room.x - minX) * SCALE + PADDING;
-    const ry = (room.y - minY) * SCALE + PADDING;
-    const rw = room.w * SCALE;
-    const rh = room.h * SCALE;
-    roomGeomMap.set(room.id, { x: rx, y: ry, w: rw, h: rh });
-  });
-
-  // ===== 레이어 그룹 생성 =====
-  // 그리드 레이어
-  const gridGroup = createSvgElement("g", {
-    id: "gridLayer",
-    opacity: "0.18"
-  });
-
+  // 간단한 그리드 선(시야용) — 현재는 항상 표시
+  const gridGroup = createSvgElement("g", { opacity: "0.18" });
   const gridSpacing = SCALE;
   for (let x = PADDING; x <= width - PADDING; x += gridSpacing) {
     const line = createSvgElement("line", {
@@ -210,9 +201,62 @@ function drawLevelMap(layout) {
   }
   svg.appendChild(gridGroup);
 
-  // 방 레이어
-  const roomsGroup = createSvgElement("g", { id: "roomsLayer" });
+  // 방 중심·기하 정보를 빠르게 찾기 위한 맵
+  const roomCenterMap = new Map();
+  const roomGeomMap = new Map();
 
+  rooms.forEach((room) => {
+    const rx = (room.x - minX) * SCALE + PADDING;
+    const ry = (room.y - minY) * SCALE + PADDING;
+    const rw = room.w * SCALE;
+    const rh = room.h * SCALE;
+
+    const cx = rx + rw / 2;
+    const cy = ry + rh / 2;
+    roomCenterMap.set(room.id, { x: cx, y: cy });
+    roomGeomMap.set(room.id, { x: rx, y: ry, w: rw, h: rh });
+  });
+
+  // ===== Door 기하 계산 헬퍼 =====
+  function computeDoorLine(door, geom) {
+    const side = (door.side || "north").toLowerCase();
+    const offset = typeof door.offset === "number" ? door.offset : 0.5;
+    const len = 32;
+
+    let x1, y1, x2, y2, cx, cy;
+
+    if (side === "north") {
+      cx = geom.x + geom.w * offset;
+      cy = geom.y;
+      x1 = cx - len / 2;
+      x2 = cx + len / 2;
+      y1 = y2 = cy;
+    } else if (side === "south") {
+      cx = geom.x + geom.w * offset;
+      cy = geom.y + geom.h;
+      x1 = cx - len / 2;
+      x2 = cx + len / 2;
+      y1 = y2 = cy;
+    } else if (side === "west") {
+      cy = geom.y + geom.h * offset;
+      cx = geom.x;
+      x1 = x2 = cx;
+      y1 = cy - len / 2;
+      y2 = cy + len / 2;
+    } else {
+      // east
+      cy = geom.y + geom.h * offset;
+      cx = geom.x + geom.w;
+      x1 = x2 = cx;
+      y1 = cy - len / 2;
+      y2 = cy + len / 2;
+    }
+
+    return { x1, y1, x2, y2, cx, cy };
+  }
+
+  // ===== 방(Room) 그리기 =====
+  const roomsGroup = createSvgElement("g");
   rooms.forEach((room) => {
     const geom = roomGeomMap.get(room.id);
     if (!geom) return;
@@ -272,47 +316,9 @@ function drawLevelMap(layout) {
   });
   svg.appendChild(roomsGroup);
 
-  // ===== Door 기하 계산 헬퍼 =====
-  function computeDoorLine(door, geom) {
-    const side = (door.side || "north").toLowerCase();
-    const offset = typeof door.offset === "number" ? door.offset : 0.5;
-    const len = 32;
-
-    let x1, y1, x2, y2;
-
-    if (side === "north") {
-      const cx = geom.x + geom.w * offset;
-      const cy = geom.y;
-      x1 = cx - len / 2;
-      x2 = cx + len / 2;
-      y1 = y2 = cy;
-    } else if (side === "south") {
-      const cx = geom.x + geom.w * offset;
-      const cy = geom.y + geom.h;
-      x1 = cx - len / 2;
-      x2 = cx + len / 2;
-      y1 = y2 = cy;
-    } else if (side === "west") {
-      const cy = geom.y + geom.h * offset;
-      const cx = geom.x;
-      x1 = x2 = cx;
-      y1 = cy - len / 2;
-      y2 = cy + len / 2;
-    } else {
-      // east
-      const cy = geom.y + geom.h * offset;
-      const cx = geom.x + geom.w;
-      x1 = x2 = cx;
-      y1 = cy - len / 2;
-      y2 = cy + len / 2;
-    }
-
-    return { x1, y1, x2, y2 };
-  }
-
-  // =====  문(Doors) 레이어 =====
-  const doorsGroup = createSvgElement("g", { id: "doorsLayer" });
-  if (doors.length) {
+  // ===== 문(Doors) 그리기 =====
+  if (showDoors && doors.length) {
+    const doorsGroup = createSvgElement("g");
     doors.forEach((door) => {
       const geom = roomGeomMap.get(door.roomId);
       if (!geom) return;
@@ -330,21 +336,21 @@ function drawLevelMap(layout) {
       });
       doorsGroup.appendChild(line);
     });
+    svg.appendChild(doorsGroup);
   }
-  svg.appendChild(doorsGroup);
 
-  // ===== 창문(Windows) 레이어 =====
-  const windowsGroup = createSvgElement("g", { id: "windowsLayer" });
-  if (windows.length) {
+  // ===== 창문(Windows) 그리기 =====
+  if (showWindows && windows.length) {
+    const windowsGroup = createSvgElement("g");
     windows.forEach((win) => {
       const geom = roomGeomMap.get(win.roomId);
       if (!geom) return;
 
       const side = (win.side || "north").toLowerCase();
       const offset = typeof win.offset === "number" ? win.offset : 0.5;
-      const len = 26;
 
       let x1, y1, x2, y2;
+      const len = 26;
 
       if (side === "north") {
         const cx = geom.x + geom.w * offset;
@@ -365,6 +371,7 @@ function drawLevelMap(layout) {
         y1 = cy - len / 2;
         y2 = cy + len / 2;
       } else {
+        // east
         const cy = geom.y + geom.h * offset;
         const cx = geom.x + geom.w;
         x1 = x2 = cx;
@@ -384,12 +391,12 @@ function drawLevelMap(layout) {
       });
       windowsGroup.appendChild(line);
     });
+    svg.appendChild(windowsGroup);
   }
-  svg.appendChild(windowsGroup);
 
-  // ===== 프롭(Props) 레이어 =====
-  const propsGroup = createSvgElement("g", { id: "propsLayer" });
-  if (props.length) {
+  // ===== 프롭(Props) 그리기 =====
+  if (showProps && props.length) {
+    const propsGroup = createSvgElement("g");
     props.forEach((prop) => {
       const geom = roomGeomMap.get(prop.roomId);
       if (!geom) return;
@@ -433,12 +440,12 @@ function drawLevelMap(layout) {
 
       propsGroup.appendChild(rect);
     });
+    svg.appendChild(propsGroup);
   }
-  svg.appendChild(propsGroup);
 
-  // ===== 적 스폰(Enemy Spawns) 레이어 =====
-  const enemyGroup = createSvgElement("g", { id: "enemyLayer" });
-  if (enemySpawns.length) {
+  // ===== 적 스폰(Enemy Spawns) 그리기 =====
+  if (showEnemies && enemySpawns.length) {
+    const enemyGroup = createSvgElement("g");
     enemySpawns.forEach((spawn) => {
       const geom = roomGeomMap.get(spawn.roomId);
       if (!geom) return;
@@ -494,35 +501,12 @@ function drawLevelMap(layout) {
       enemyGroup.appendChild(line1);
       enemyGroup.appendChild(line2);
     });
+    svg.appendChild(enemyGroup);
   }
-  svg.appendChild(enemyGroup);
 
   // 컨테이너 비우고 새 SVG 삽입
   mapContainer.innerHTML = "";
   mapContainer.appendChild(svg);
-
-  // 최초 렌더 후, 토글 상태와 동기화
-  updateLayerVisibility();
-}
-
-// ===== 레이어 visibility 업데이트 =====
-function updateLayerVisibility() {
-  const svg = mapContainer.querySelector("svg");
-  if (!svg) return;
-
-  const { showGrid, showDoors, showWindows, showProps, showEnemies } = getCurrentOptions();
-
-  function setDisplay(id, show) {
-    const layer = svg.querySelector(id);
-    if (!layer) return;
-    layer.style.display = show ? "block" : "none";
-  }
-
-  setDisplay("#gridLayer", showGrid);
-  setDisplay("#doorsLayer", showDoors);
-  setDisplay("#windowsLayer", showWindows);
-  setDisplay("#propsLayer", showProps);
-  setDisplay("#enemyLayer", showEnemies);
 }
 
 // ===== 툴팁 헬퍼 =====
@@ -572,7 +556,7 @@ function handleGenerate() {
       `(rooms: ${rooms.length}, doors: ${doors.length}, windows: ${windows.length}, ` +
       `props: ${props.length}, enemySpawns: ${enemySpawns.length})`;
 
-    drawLevelMap(layout);
+    drawLevelMap(layout, getCurrentOptions());
 
     statusEl.textContent =
       `Done. Map generated. ` +
@@ -584,17 +568,17 @@ function handleGenerate() {
   }
 }
 
-// 레이어 토글 시 재렌더링(visibility만 변경)
+// 레이어 토글 시 재렌더링
 function rerenderLast() {
   if (!lastLayout) return;
   try {
-    updateLayerVisibility();
-
     const rooms = lastLayout.rooms || [];
     const doors = lastLayout.doors || [];
     const windows = lastLayout.windows || [];
     const props = lastLayout.props || [];
     const enemySpawns = lastLayout.enemySpawns || [];
+
+    drawLevelMap(lastLayout, getCurrentOptions());
 
     statusEl.textContent =
       `View updated. ` +
@@ -619,7 +603,6 @@ function handleClear() {
 generateBtn.addEventListener("click", handleGenerate);
 clearBtn.addEventListener("click", handleClear);
 
-if (toggleGridEl) toggleGridEl.addEventListener("change", rerenderLast);
 if (toggleDoorsEl) toggleDoorsEl.addEventListener("change", rerenderLast);
 if (toggleWindowsEl) toggleWindowsEl.addEventListener("change", rerenderLast);
 if (togglePropsEl) togglePropsEl.addEventListener("change", rerenderLast);
