@@ -1,6 +1,6 @@
 /* ==========================
 map-visualizer/style.css
-(기존 코드 + 범례 확장)
+(기존 코드 + 범례/레이어/툴팁 확장)
 ========================== */
 
 /* 전체 배경과 기본 폰트 설정 */
@@ -104,6 +104,35 @@ button:disabled {
   color: #93c5fd;
 }
 
+/* 레이어 토글 */
+.layer-toggles {
+  margin-top: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.layer-toggles .label {
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.layer-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.layer-toggles input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #2563eb;
+}
+
 /* 맵 컨테이너 */
 .map-container {
   margin-top: 10px;
@@ -190,4 +219,23 @@ button:disabled {
 
 .legend-line.mainpath {
   border-color: #e5e7eb;
+}
+
+/* 툴팁 */
+.tooltip {
+  position: fixed;
+  z-index: 999;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+  color: #e5e7eb;
+  pointer-events: none;
+  max-width: 260px;
+  white-space: pre-line;
+}
+
+.tooltip.hidden {
+  display: none;
 }

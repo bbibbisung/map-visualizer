@@ -9,6 +9,18 @@ const clearBtn = document.getElementById("clearBtn");
 const statusEl = document.getElementById("status");
 const mapContainer = document.getElementById("mapContainer");
 
+// 레이어 토글 요소
+const toggleDoorsEl = document.getElementById("toggleDoors");
+const toggleWindowsEl = document.getElementById("toggleWindows");
+const togglePropsEl = document.getElementById("toggleProps");
+const toggleEnemiesEl = document.getElementById("toggleEnemies");
+
+// 툴팁 요소
+const tooltipEl = document.getElementById("tooltip");
+
+// 마지막으로 파싱된 레이아웃(레이어 토글 시 재사용)
+let lastLayout = null;
+
 // 방 타입별 색상 매핑
 const ROOM_COLORS = {
   spawn: "#22c55e",   // green
@@ -29,6 +41,18 @@ const FEATURE_COLORS = {
   prop: "#f9a8d4",       // 핑크
   enemy: "#fb7185",      // 적 위치
   mainPath: "#e5e7eb"    // 메인 루트 강조선
+};
+
+// 프롭 카테고리별 크기(룸 로컬 그리드 단위 기준)
+const PROP_SIZE_MAP = {
+  crate_small: { w: 0.6, h: 0.6 },
+  crate_large: { w: 1.0, h: 1.0 },
+  cover_pillar: { w: 0.6, h: 0.6 },
+  cover_wall: { w: 2.4, h: 0.6 },
+  console: { w: 1.4, h: 0.8 },
+  table: { w: 1.4, h: 0.8 },
+  machine: { w: 1.6, h: 1.0 },
+  default: { w: 0.8, h: 0.8 }
 };
 
 // ===== level-json 블록 추출 함수 =====
@@ -66,8 +90,25 @@ function createSvgElement(tag, attrs = {}) {
   return el;
 }
 
+// 현재 레이어 토글 상태 읽기
+function getCurrentOptions() {
+  return {
+    showDoors: !toggleDoorsEl || toggleDoorsEl.checked,
+    showWindows: !toggleWindowsEl || toggleWindowsEl.checked,
+    showProps: !togglePropsEl || togglePropsEl.checked,
+    showEnemies: !toggleEnemiesEl || toggleEnemiesEl.checked
+  };
+}
+
 // ===== 맵 그리기 핵심 함수 =====
-function drawLevelMap(layout) {
+function drawLevelMap(layout, options = {}) {
+  const {
+    showDoors = true,
+    showWindows = true,
+    showProps = true,
+    showEnemies = true
+  } = options;
+
   const rooms = layout.rooms || [];
   const connections = layout.connections || [];
 
@@ -167,7 +208,6 @@ function drawLevelMap(layout) {
   const roomCenterMap = new Map();
   const roomGeomMap = new Map();
 
-  // ===== 1) 방(Room) 기하 정보 계산 (그리기 X) =====
   rooms.forEach((room) => {
     const rx = (room.x - minX) * SCALE + PADDING;
     const ry = (room.y - minY) * SCALE + PADDING;
@@ -180,20 +220,106 @@ function drawLevelMap(layout) {
     roomGeomMap.set(room.id, { x: rx, y: ry, w: rw, h: rh });
   });
 
-  // ===== 2) 연결(Connections) 먼저 그리기 (텍스트를 가리지 않도록 아래 레이어) =====
+  // 방별 door 목록 캐싱
+  const doorsByRoom = new Map();
+  doors.forEach((door) => {
+    if (!door.roomId) return;
+    if (!doorsByRoom.has(door.roomId)) {
+      doorsByRoom.set(door.roomId, []);
+    }
+    doorsByRoom.get(door.roomId).push(door);
+  });
+
+  // ===== Door 기하 계산 헬퍼 =====
+  function computeDoorLine(door, geom) {
+    const side = (door.side || "north").toLowerCase();
+    const offset = typeof door.offset === "number" ? door.offset : 0.5;
+    const len = 32;
+
+    let x1, y1, x2, y2, cx, cy;
+
+    if (side === "north") {
+      cx = geom.x + geom.w * offset;
+      cy = geom.y;
+      x1 = cx - len / 2;
+      x2 = cx + len / 2;
+      y1 = y2 = cy;
+    } else if (side === "south") {
+      cx = geom.x + geom.w * offset;
+      cy = geom.y + geom.h;
+      x1 = cx - len / 2;
+      x2 = cx + len / 2;
+      y1 = y2 = cy;
+    } else if (side === "west") {
+      cy = geom.y + geom.h * offset;
+      cx = geom.x;
+      x1 = x2 = cx;
+      y1 = cy - len / 2;
+      y2 = cy + len / 2;
+    } else {
+      // east
+      cy = geom.y + geom.h * offset;
+      cx = geom.x + geom.w;
+      x1 = x2 = cx;
+      y1 = cy - len / 2;
+      y2 = cy + len / 2;
+    }
+
+    return { x1, y1, x2, y2, cx, cy };
+  }
+
+  // ===== 연결선이 문에서 시작/끝나도록 Door 기준 포인트 계산 =====
+  function getDoorCenterForConnection(roomId, targetRoomId) {
+    const geom = roomGeomMap.get(roomId);
+    const center = roomCenterMap.get(roomId);
+    const targetCenter = roomCenterMap.get(targetRoomId);
+
+    if (!geom || !center || !targetCenter) {
+      return center || { x: 0, y: 0 };
+    }
+
+    const dx = targetCenter.x - center.x;
+    const dy = targetCenter.y - center.y;
+
+    // 어떤 방향으로 연결되는지에 따라 선호 side 결정
+    let desiredSide;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      desiredSide = dx >= 0 ? "east" : "west";
+    } else {
+      desiredSide = dy >= 0 ? "south" : "north";
+    }
+
+    const roomDoors = doorsByRoom.get(roomId) || [];
+    let chosenDoor =
+      roomDoors.find((d) => (d.side || "north").toLowerCase() === desiredSide) ||
+      roomDoors[0];
+
+    if (!chosenDoor) {
+      // 문이 없으면 방 중심 사용
+      return center;
+    }
+
+    const geomLine = computeDoorLine(chosenDoor, geom);
+    return { x: geomLine.cx, y: geomLine.cy };
+  }
+
+  // ===== 1) 연결(Connections) 먼저 그리기 (문 기준) =====
   const connGroup = createSvgElement("g");
   connections.forEach((conn) => {
-    const from = roomCenterMap.get(conn.from);
-    const to = roomCenterMap.get(conn.to);
-    if (!from || !to) return;
+    const fromCenter = roomCenterMap.get(conn.from);
+    const toCenter = roomCenterMap.get(conn.to);
+    if (!fromCenter || !toCenter) return;
+
+    const start = getDoorCenterForConnection(conn.from, conn.to);
+    const end = getDoorCenterForConnection(conn.to, conn.from);
 
     const isMain = !!conn.mainPath; // mainPath: true 인 연결은 강조
 
     const line = createSvgElement("line", {
-      x1: from.x,
-      y1: from.y,
-      x2: to.x,
-      y2: to.y,
+      x1: start.x,
+      y1: start.y,
+      x2: end.x,
+      y2: end.y,
       stroke: isMain ? FEATURE_COLORS.mainPath : "#e5e7eb",
       "stroke-width": isMain ? 3 : 2,
       "stroke-linecap": "round",
@@ -202,15 +328,15 @@ function drawLevelMap(layout) {
     connGroup.appendChild(line);
 
     // 간단한 화살표 (to 방향)
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
     const ux = dx / len;
     const uy = dy / len;
     const arrowLen = 10;
 
-    const ax = to.x - ux * 8; // 끝에서 조금 들어온 지점
-    const ay = to.y - uy * 8;
+    const ax = end.x - ux * 8; // 끝에서 조금 들어온 지점
+    const ay = end.y - uy * 8;
 
     const arrow1 = createSvgElement("line", {
       x1: ax,
@@ -235,7 +361,7 @@ function drawLevelMap(layout) {
   });
   svg.appendChild(connGroup);
 
-  // ===== 3) 방(Room) 그리기 (연결선 위에 올라오게) =====
+  // ===== 2) 방(Room) 그리기 (연결선 위에 올라오게) =====
   const roomsGroup = createSvgElement("g");
   rooms.forEach((room) => {
     const geom = roomGeomMap.get(room.id);
@@ -262,6 +388,21 @@ function drawLevelMap(layout) {
       rx: 8,
       ry: 8
     });
+
+    // 방 툴팁
+    rect.addEventListener("mouseenter", (e) => {
+      const sizeText = `size: ${room.w} x ${room.h}`;
+      const typeText = room.type ? `type: ${room.type}` : "type: (none)";
+      const labelText = room.label || room.id || "(unnamed room)";
+      showTooltip(`${labelText}\n${typeText}\n${sizeText}`, e.clientX, e.clientY);
+    });
+    rect.addEventListener("mousemove", (e) => {
+      moveTooltip(e.clientX, e.clientY);
+    });
+    rect.addEventListener("mouseleave", () => {
+      hideTooltip();
+    });
+
     roomsGroup.appendChild(rect);
 
     // 방 레이블 텍스트
@@ -281,183 +422,220 @@ function drawLevelMap(layout) {
   });
   svg.appendChild(roomsGroup);
 
-  // ===== 4) 문(Doors) 그리기 =====
-  const doorsGroup = createSvgElement("g");
-  doors.forEach((door) => {
-    const geom = roomGeomMap.get(door.roomId);
-    if (!geom) return;
+  // ===== 3) 문(Doors) 그리기 =====
+  if (showDoors && doors.length) {
+    const doorsGroup = createSvgElement("g");
+    doors.forEach((door) => {
+      const geom = roomGeomMap.get(door.roomId);
+      if (!geom) return;
 
-    const side = (door.side || "north").toLowerCase();
-    const offset = typeof door.offset === "number" ? door.offset : 0.5;
+      const dGeom = computeDoorLine(door, geom);
 
-    let x1, y1, x2, y2;
-    const len = 32; // 문 표시 길이 더 길게
-
-    if (side === "north") {
-      const cx = geom.x + geom.w * offset;
-      const cy = geom.y;
-      x1 = cx - len / 2;
-      x2 = cx + len / 2;
-      y1 = y2 = cy;
-    } else if (side === "south") {
-      const cx = geom.x + geom.w * offset;
-      const cy = geom.y + geom.h;
-      x1 = cx - len / 2;
-      x2 = cx + len / 2;
-      y1 = y2 = cy;
-    } else if (side === "west") {
-      const cy = geom.y + geom.h * offset;
-      const cx = geom.x;
-      x1 = x2 = cx;
-      y1 = cy - len / 2;
-      y2 = cy + len / 2;
-    } else { // east
-      const cy = geom.y + geom.h * offset;
-      const cx = geom.x + geom.w;
-      x1 = x2 = cx;
-      y1 = cy - len / 2;
-      y2 = cy + len / 2;
-    }
-
-    const line = createSvgElement("line", {
-      x1, y1, x2, y2,
-      stroke: FEATURE_COLORS.door,
-      "stroke-width": 5,
-      "stroke-linecap": "round"
+      const line = createSvgElement("line", {
+        x1: dGeom.x1,
+        y1: dGeom.y1,
+        x2: dGeom.x2,
+        y2: dGeom.y2,
+        stroke: FEATURE_COLORS.door,
+        "stroke-width": 5,
+        "stroke-linecap": "round"
+      });
+      doorsGroup.appendChild(line);
     });
-    doorsGroup.appendChild(line);
-  });
-  svg.appendChild(doorsGroup);
+    svg.appendChild(doorsGroup);
+  }
 
-  // ===== 5) 창문(Windows) 그리기 =====
-  const windowsGroup = createSvgElement("g");
-  windows.forEach((win) => {
-    const geom = roomGeomMap.get(win.roomId);
-    if (!geom) return;
+  // ===== 4) 창문(Windows) 그리기 =====
+  if (showWindows && windows.length) {
+    const windowsGroup = createSvgElement("g");
+    windows.forEach((win) => {
+      const geom = roomGeomMap.get(win.roomId);
+      if (!geom) return;
 
-    const side = (win.side || "north").toLowerCase();
-    const offset = typeof win.offset === "number" ? win.offset : 0.5;
+      const side = (win.side || "north").toLowerCase();
+      const offset = typeof win.offset === "number" ? win.offset : 0.5;
 
-    let x1, y1, x2, y2;
-    const len = 26;
+      let x1, y1, x2, y2;
+      const len = 26;
 
-    if (side === "north") {
-      const cx = geom.x + geom.w * offset;
-      const cy = geom.y;
-      x1 = cx - len / 2;
-      x2 = cx + len / 2;
-      y1 = y2 = cy;
-    } else if (side === "south") {
-      const cx = geom.x + geom.w * offset;
-      const cy = geom.y + geom.h;
-      x1 = cx - len / 2;
-      x2 = cx + len / 2;
-      y1 = y2 = cy;
-    } else if (side === "west") {
-      const cy = geom.y + geom.h * offset;
-      const cx = geom.x;
-      x1 = x2 = cx;
-      y1 = cy - len / 2;
-      y2 = cy + len / 2;
-    } else { // east
-      const cy = geom.y + geom.h * offset;
-      const cx = geom.x + geom.w;
-      x1 = x2 = cx;
-      y1 = cy - len / 2;
-      y2 = cy + len / 2;
-    }
+      if (side === "north") {
+        const cx = geom.x + geom.w * offset;
+        const cy = geom.y;
+        x1 = cx - len / 2;
+        x2 = cx + len / 2;
+        y1 = y2 = cy;
+      } else if (side === "south") {
+        const cx = geom.x + geom.w * offset;
+        const cy = geom.y + geom.h;
+        x1 = cx - len / 2;
+        x2 = cx + len / 2;
+        y1 = y2 = cy;
+      } else if (side === "west") {
+        const cy = geom.y + geom.h * offset;
+        const cx = geom.x;
+        x1 = x2 = cx;
+        y1 = cy - len / 2;
+        y2 = cy + len / 2;
+      } else {
+        // east
+        const cy = geom.y + geom.h * offset;
+        const cx = geom.x + geom.w;
+        x1 = x2 = cx;
+        y1 = cy - len / 2;
+        y2 = cy + len / 2;
+      }
 
-    const line = createSvgElement("line", {
-      x1, y1, x2, y2,
-      stroke: FEATURE_COLORS.window,
-      "stroke-width": 4,
-      "stroke-linecap": "round",
-      "stroke-dasharray": "4 3"
+      const line = createSvgElement("line", {
+        x1,
+        y1,
+        x2,
+        y2,
+        stroke: FEATURE_COLORS.window,
+        "stroke-width": 4,
+        "stroke-linecap": "round",
+        "stroke-dasharray": "4 3"
+      });
+      windowsGroup.appendChild(line);
     });
-    windowsGroup.appendChild(line);
-  });
-  svg.appendChild(windowsGroup);
+    svg.appendChild(windowsGroup);
+  }
 
-  // ===== 6) 프롭(Props) 그리기 =====
-  const propsGroup = createSvgElement("g");
-  props.forEach((prop) => {
-    const geom = roomGeomMap.get(prop.roomId);
-    if (!geom) return;
+  // ===== 5) 프롭(Props) 그리기 (카테고리별 사이즈 적용) =====
+  if (showProps && props.length) {
+    const propsGroup = createSvgElement("g");
+    props.forEach((prop) => {
+      const geom = roomGeomMap.get(prop.roomId);
+      if (!geom) return;
 
-    const localX = typeof prop.x === "number" ? prop.x : (geom.w / SCALE) * 0.5;
-    const localY = typeof prop.y === "number" ? prop.y : (geom.h / SCALE) * 0.5;
+      const localX = typeof prop.x === "number" ? prop.x : (geom.w / SCALE) * 0.5;
+      const localY = typeof prop.y === "number" ? prop.y : (geom.h / SCALE) * 0.5;
 
-    const px = geom.x + localX * SCALE;
-    const py = geom.y + localY * SCALE;
+      const px = geom.x + localX * SCALE;
+      const py = geom.y + localY * SCALE;
 
-    const size = 16; // 큼직하게
+      const cat = (prop.category || "default").toLowerCase();
+      const sizeCfg = PROP_SIZE_MAP[cat] || PROP_SIZE_MAP.default;
 
-    const rect = createSvgElement("rect", {
-      x: px - size / 2,
-      y: py - size / 2,
-      width: size,
-      height: size,
-      fill: FEATURE_COLORS.prop,
-      "fill-opacity": 0.97,
-      stroke: "#020617",
-      "stroke-width": 2,
-      rx: 4,
-      ry: 4
+      const wPx = sizeCfg.w * SCALE;
+      const hPx = sizeCfg.h * SCALE;
+
+      const rect = createSvgElement("rect", {
+        x: px - wPx / 2,
+        y: py - hPx / 2,
+        width: wPx,
+        height: hPx,
+        fill: FEATURE_COLORS.prop,
+        "fill-opacity": 0.97,
+        stroke: "#020617",
+        "stroke-width": 2,
+        rx: 4,
+        ry: 4
+      });
+
+      // 프롭 툴팁
+      rect.addEventListener("mouseenter", (e) => {
+        const label = prop.category || "prop";
+        const posText = `local: (${localX.toFixed(1)}, ${localY.toFixed(1)})`;
+        showTooltip(`Prop: ${label}\n${posText}`, e.clientX, e.clientY);
+      });
+      rect.addEventListener("mousemove", (e) => {
+        moveTooltip(e.clientX, e.clientY);
+      });
+      rect.addEventListener("mouseleave", () => {
+        hideTooltip();
+      });
+
+      propsGroup.appendChild(rect);
     });
-    propsGroup.appendChild(rect);
-  });
-  svg.appendChild(propsGroup);
+    svg.appendChild(propsGroup);
+  }
 
-  // ===== 7) 적 스폰(Enemy Spawns) 그리기 =====
-  const enemyGroup = createSvgElement("g");
-  enemySpawns.forEach((spawn) => {
-    const geom = roomGeomMap.get(spawn.roomId);
-    if (!geom) return;
+  // ===== 6) 적 스폰(Enemy Spawns) 그리기 =====
+  if (showEnemies && enemySpawns.length) {
+    const enemyGroup = createSvgElement("g");
+    enemySpawns.forEach((spawn) => {
+      const geom = roomGeomMap.get(spawn.roomId);
+      if (!geom) return;
 
-    const localX = typeof spawn.x === "number" ? spawn.x : (geom.w / SCALE) * 0.5;
-    const localY = typeof spawn.y === "number" ? spawn.y : (geom.h / SCALE) * 0.5;
+      const localX = typeof spawn.x === "number" ? spawn.x : (geom.w / SCALE) * 0.5;
+      const localY = typeof spawn.y === "number" ? spawn.y : (geom.h / SCALE) * 0.5;
 
-    const ex = geom.x + localX * SCALE;
-    const ey = geom.y + localY * SCALE;
+      const ex = geom.x + localX * SCALE;
+      const ey = geom.y + localY * SCALE;
 
-    const r = 9; // 더 크게
+      const r = 9; // 더 크게
 
-    const circle = createSvgElement("circle", {
-      cx: ex,
-      cy: ey,
-      r,
-      fill: FEATURE_COLORS.enemy,
-      "fill-opacity": 0.97,
-      stroke: "#020617",
-      "stroke-width": 2
+      const circle = createSvgElement("circle", {
+        cx: ex,
+        cy: ey,
+        r,
+        fill: FEATURE_COLORS.enemy,
+        "fill-opacity": 0.97,
+        stroke: "#020617",
+        "stroke-width": 2
+      });
+
+      // 툴팁
+      circle.addEventListener("mouseenter", (e) => {
+        const role = spawn.role || "enemy";
+        const posText = `local: (${localX.toFixed(1)}, ${localY.toFixed(1)})`;
+        showTooltip(`Enemy: ${role}\n${posText}`, e.clientX, e.clientY);
+      });
+      circle.addEventListener("mousemove", (e) => {
+        moveTooltip(e.clientX, e.clientY);
+      });
+      circle.addEventListener("mouseleave", () => {
+        hideTooltip();
+      });
+
+      enemyGroup.appendChild(circle);
+
+      // 흰색 십자 표시
+      const line1 = createSvgElement("line", {
+        x1: ex - r + 1,
+        y1: ey,
+        x2: ex + r - 1,
+        y2: ey,
+        stroke: "#ffffff",
+        "stroke-width": 2
+      });
+      const line2 = createSvgElement("line", {
+        x1: ex,
+        y1: ey - r + 1,
+        x2: ex,
+        y2: ey + r - 1,
+        stroke: "#ffffff",
+        "stroke-width": 2
+      });
+      enemyGroup.appendChild(line1);
+      enemyGroup.appendChild(line2);
     });
-    enemyGroup.appendChild(circle);
-
-    // 흰색 십자 표시
-    const line1 = createSvgElement("line", {
-      x1: ex - r + 1,
-      y1: ey,
-      x2: ex + r - 1,
-      y2: ey,
-      stroke: "#ffffff",
-      "stroke-width": 2
-    });
-    const line2 = createSvgElement("line", {
-      x1: ex,
-      y1: ey - r + 1,
-      x2: ex,
-      y2: ey + r - 1,
-      stroke: "#ffffff",
-      "stroke-width": 2
-    });
-    enemyGroup.appendChild(line1);
-    enemyGroup.appendChild(line2);
-  });
-  svg.appendChild(enemyGroup);
+    svg.appendChild(enemyGroup);
+  }
 
   // 컨테이너 비우고 새 SVG 삽입
   mapContainer.innerHTML = "";
   mapContainer.appendChild(svg);
+}
+
+// ===== 툴팁 헬퍼 =====
+function showTooltip(text, clientX, clientY) {
+  if (!tooltipEl) return;
+  tooltipEl.textContent = text;
+  tooltipEl.classList.remove("hidden");
+  moveTooltip(clientX, clientY);
+}
+
+function moveTooltip(clientX, clientY) {
+  if (!tooltipEl || tooltipEl.classList.contains("hidden")) return;
+  const offset = 12;
+  tooltipEl.style.left = clientX + offset + "px";
+  tooltipEl.style.top = clientY + offset + "px";
+}
+
+function hideTooltip() {
+  if (!tooltipEl) return;
+  tooltipEl.classList.add("hidden");
 }
 
 // ===== 버튼 클릭 핸들러 =====
@@ -465,6 +643,7 @@ function handleGenerate() {
   const text = inputEl.value;
   statusEl.textContent = "";
   mapContainer.innerHTML = "";
+  hideTooltip();
 
   if (!text.trim()) {
     statusEl.textContent = "Please paste the full level blueprint text first.";
@@ -473,7 +652,8 @@ function handleGenerate() {
 
   try {
     const layout = extractLevelJsonBlock(text);
-    // 상태에 개수 표시
+    lastLayout = layout;
+
     const rooms = layout.rooms || [];
     const doors = layout.doors || [];
     const windows = layout.windows || [];
@@ -485,7 +665,7 @@ function handleGenerate() {
       `(rooms: ${rooms.length}, doors: ${doors.length}, windows: ${windows.length}, ` +
       `props: ${props.length}, enemySpawns: ${enemySpawns.length})`;
 
-    drawLevelMap(layout);
+    drawLevelMap(layout, getCurrentOptions());
 
     statusEl.textContent =
       `Done. Map generated. ` +
@@ -497,13 +677,42 @@ function handleGenerate() {
   }
 }
 
+// 레이어 토글 시 재렌더링
+function rerenderLast() {
+  if (!lastLayout) return;
+  try {
+    const rooms = lastLayout.rooms || [];
+    const doors = lastLayout.doors || [];
+    const windows = lastLayout.windows || [];
+    const props = lastLayout.props || [];
+    const enemySpawns = lastLayout.enemySpawns || [];
+
+    drawLevelMap(lastLayout, getCurrentOptions());
+
+    statusEl.textContent =
+      `View updated. ` +
+      `(rooms: ${rooms.length}, doors: ${doors.length}, windows: ${windows.length}, ` +
+      `props: ${props.length}, enemySpawns: ${enemySpawns.length})`;
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = "Error while updating view: " + err.message;
+  }
+}
+
 // ===== Clear 버튼 =====
 function handleClear() {
   inputEl.value = "";
   mapContainer.innerHTML = "";
   statusEl.textContent = "Cleared.";
+  lastLayout = null;
+  hideTooltip();
 }
 
 // 이벤트 바인딩
 generateBtn.addEventListener("click", handleGenerate);
 clearBtn.addEventListener("click", handleClear);
+
+if (toggleDoorsEl) toggleDoorsEl.addEventListener("change", rerenderLast);
+if (toggleWindowsEl) toggleWindowsEl.addEventListener("change", rerenderLast);
+if (togglePropsEl) togglePropsEl.addEventListener("change", rerenderLast);
+if (toggleEnemiesEl) toggleEnemiesEl.addEventListener("change", rerenderLast);

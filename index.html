@@ -42,6 +42,16 @@ map-visualizer/index.html
         detail layers (<code>doors</code>, <code>windows</code>, <code>props</code>,
         <code>enemySpawns</code>) inside the <code>level-json</code> block.
       </p>
+
+      <!-- 레이어 토글 -->
+      <div class="layer-toggles">
+        <span class="label">Layers:</span>
+        <label><input type="checkbox" id="toggleDoors" checked> Doors</label>
+        <label><input type="checkbox" id="toggleWindows" checked> Windows</label>
+        <label><input type="checkbox" id="toggleProps" checked> Props</label>
+        <label><input type="checkbox" id="toggleEnemies" checked> Enemy Spawns</label>
+      </div>
+
       <div id="mapContainer" class="map-container">
         <!-- SVG가 여기 안에 동적으로 삽입됩니다 -->
       </div>
@@ -67,7 +77,7 @@ map-visualizer/index.html
           </li>
           <li>
             <span class="legend-dot prop"></span>
-            Prop / Object &mdash; pink square inside the room
+            Prop / Object &mdash; sized box inside the room
           </li>
           <li>
             <span class="legend-dot enemy"></span>
@@ -81,6 +91,9 @@ map-visualizer/index.html
       </div>
     </section>
   </div>
+
+  <!-- 툴팁 -->
+  <div id="tooltip" class="tooltip hidden"></div>
 
   <script src="script.js"></script>
 </body>
