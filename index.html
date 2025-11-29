@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Level Map Visualizer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Level Map Visualizer</h1>
+      <p class="subtitle">
+        Paste a full Level Blueprint (with <code>level-json</code>) and generate a 2D map.
+      </p>
+    </header>
+
+    <!-- 입력 영역 -->
+    <section class="panel">
+      <h2>1) Paste Level Blueprint Text</h2>
+      <p class="hint">
+        Paste the entire output from the Level Blueprint Generator here.
+        The tool will automatically find the <code>```level-json ... ```</code> block.
+      </p>
+      <textarea id="inputText" placeholder="Paste your full level blueprint here..."></textarea>
+
+      <div class="actions">
+        <button id="generateBtn">Generate Map</button>
+        <button id="clearBtn" class="secondary">Clear</button>
+        <span id="status" class="status"></span>
+      </div>
+    </section>
+
+    <!-- 결과 / 시각화 영역 -->
+    <section class="panel">
+      <h2>2) Generated Map Preview</h2>
+      <p class="hint">
+        The map is drawn from the <code>rooms</code> and <code>connections</code> inside the
+        <code>level-json</code> block. Room size and position are based on grid coordinates.
+      </p>
+      <div id="mapContainer" class="map-container">
+        <!-- SVG가 여기 안에 동적으로 삽입됩니다 -->
+      </div>
+
+      <div id="legend" class="legend">
+        <h3>Legend</h3>
+        <ul>
+          <li><span class="legend-color spawn"></span> Spawn / Start</li>
+          <li><span class="legend-color combat"></span> Combat</li>
+          <li><span class="legend-color puzzle"></span> Puzzle</li>
+          <li><span class="legend-color boss"></span> Boss / Climax</li>
+          <li><span class="legend-color hub"></span> Hub / Safe</li>
+          <li><span class="legend-color other"></span> Other types</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

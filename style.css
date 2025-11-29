@@ -1,0 +1,160 @@
+/* 전체 배경과 기본 폰트 설정 */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui,
+    "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  background: #020617;
+  color: #e5e7eb;
+}
+
+/* 가운데 정렬 + 폭 제한 */
+.app {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+/* 헤더 */
+.header h1 {
+  font-size: 28px;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  margin: 0 0 16px;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+/* 카드 형태 패널 */
+.panel {
+  margin-top: 16px;
+  padding: 16px 16px 20px;
+  background: #020617;
+  border-radius: 12px;
+  border: 1px solid #1f2937;
+}
+
+.panel h2 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+/* 입력창 */
+#inputText {
+  width: 100%;
+  min-height: 220px;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid #1f2937;
+  background: #020617;
+  color: #e5e7eb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre-wrap;
+}
+
+/* 버튼 영역 */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+button {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #020617;
+  border: 1px solid #374151;
+  color: #e5e7eb;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.status {
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+/* 맵 컨테이너 */
+.map-container {
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px solid #1f2937;
+  background: #020617;
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* SVG 기본 크기(없으면 처음에 너무 작게 보일 수 있음) */
+.map-container svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* 범례 */
+.legend {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.legend h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.legend ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* 타입별 색상 (SVG와 맞춰줍니다) */
+.legend-color.spawn { background: #22c55e; }
+.legend-color.combat { background: #f97316; }
+.legend-color.puzzle { background: #3b82f6; }
+.legend-color.boss { background: #ec4899; }
+.legend-color.hub { background: #a855f7; }
+.legend-color.other { background: #9ca3af; }
